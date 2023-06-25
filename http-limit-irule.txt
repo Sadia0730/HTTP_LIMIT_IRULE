@@ -1,0 +1,38 @@
+when HTTP_REQUEST {
+    #log local0. "clientIP:[IP::client_addr] accessed [HTTP::host][HTTP::uri]"
+    if { ( [HTTP::uri] starts_with "/mr_portal" ) or ( [HTTP::uri] starts_with "/TSPD" )} {
+        pool pool-pf-mc-mrportal
+    }
+    else {
+    table set -subtable connlimit:[virtual] [IP::client_addr][TCP::client_port] "" 1
+    log local0. "initial value [table keys -subtable connlimit:[virtual] -count]"
+    
+	    if { [table keys -subtable connlimit:[virtual] -count] < 101 } {
+	       #log local0. "IF Block [table keys -subtable connlimit:[virtual] ]"
+           log local0. "Count [table keys -subtable connlimit:[virtual] -count] for [HTTP::uri]"
+                if { [HTTP::uri] starts_with "/dreamwave/merchant/trxcheck/periodicpullmsg" }{
+                    #log local0. "Your URI is [HTTP::uri]"
+                    set uri [string map -nocase {"/dreamwave/merchant/trxcheck/periodicpullmsg" "/payment/merchant/trxcheck/periodicpullmsg"} [HTTP::uri]]
+                    #log local0. "New URI = $uri"
+                    HTTP::uri $uri
+                 } elseif { [HTTP::uri] starts_with "/dreamwave/merchant/trxcheck/sendmsg" }{
+                    #log local0. "Your URI is [HTTP::uri]"
+                    set uri [string map -nocase {"/dreamwave/merchant/trxcheck/sendmsg" "/payment/merchant/trxcheck/sendmsg"} [HTTP::uri]]
+                    #log local0. "New URI = $uri"
+                    HTTP::uri $uri
+                 } else {
+                    HTTP::redirect "https://www.bkash.com"
+                 }
+	     }
+	     else {
+            log local0. "HTTP session limit reached"
+            log local0. "Else Block [table keys -subtable connlimit:[virtual] -count] for [HTTP::uri]"
+            # HTTP::redirect [HTTP::uri]
+            # HTTP::respond 429
+            # table delete -subtable connlimit:[virtual] [IP::client_addr][TCP::client_port]
+			HTTP::respond 301 Location "https://[getfield [HTTP::host] : 1][HTTP::uri]"
+			SSL::session invalidate
+            return
+         }
+    }
+}
